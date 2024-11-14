@@ -1,7 +1,7 @@
 let totalScore = 0;
 let combo = 1;
 let lastPoints = 0;
-
+let suggestedMoveSequence = null;
 
 // Left grid (8x8)
 let leftGridArray = [];
@@ -24,9 +24,6 @@ for (let k = 0; k < 3; k++) {
     ];
 }
 
-// Store event listeners for right grids
-let rightGridMouseDownListeners = [];
-
 function createLeftGrid() {
     const leftGrid = document.getElementById('left-grid');
     leftGrid.innerHTML = '';
@@ -47,14 +44,27 @@ function createLeftGrid() {
             if (leftGridArray[i][j] === 1) {
                 cell.classList.add('on');
             }
+            if (highlightGridArray[i][j]) {
+                cell.style.backgroundColor = highlightGridArray[i][j];
+            }
             cell.addEventListener('click', () => {
                 leftGridArray[i][j] = leftGridArray[i][j] ? 0 : 1;
+                // Clear the highlightGridArray when the grid is manually modified
+                for (let i = 0; i < 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                        highlightGridArray[i][j] = null;
+                    }
+                }
+                suggestedMoveSequence = null;
+                document.getElementById('play-suggestion-button').disabled = true;
                 createLeftGrid();
             });
             leftGrid.appendChild(cell);
         }
     }
 }
+
+
 
 function calculateLeftGridSize() {
     const screenWidth = window.innerWidth;
@@ -74,7 +84,6 @@ function calculateMainGridCellSize() {
 function createRightGrid(gridIndex) {
     const gridContainer = document.getElementsByClassName('grid-container')[gridIndex];
     const rightGrid = gridContainer.getElementsByClassName('right-grid')[0];
-    const editButton = gridContainer.getElementsByClassName('edit-button')[0];
 
     rightGrid.innerHTML = '';
 
@@ -100,22 +109,7 @@ function createRightGrid(gridIndex) {
     rightGrid.style.gridTemplateRows = `repeat(${rows}, ${cellSize}px)`;
     rightGrid.style.gap = '2px';
 
-    const isEditing = editButton.textContent === 'Editing';
-
-    // Remove previous mousedown listener if any
-    if (rightGridMouseDownListeners[gridIndex]) {
-        rightGrid.removeEventListener('mousedown', rightGridMouseDownListeners[gridIndex]);
-    }
-
-    function handleMouseDown(event) {
-        if (editButton.textContent === 'Locked') {
-            startDrag(event, gridIndex);
-        }
-    }
-
-    rightGrid.addEventListener('mousedown', handleMouseDown);
-    rightGridMouseDownListeners[gridIndex] = handleMouseDown;
-
+    // Create cells and add event listeners
     for (let i = 0; i < rows; i++) {
         for (let j = 0; j < cols; j++) {
             const cell = document.createElement('div');
@@ -123,16 +117,51 @@ function createRightGrid(gridIndex) {
             if (gridArray[i][j] === 1) {
                 cell.classList.add('on');
             }
-            if (isEditing) {
-                cell.addEventListener('click', () => {
-                    gridArray[i][j] = gridArray[i][j] ? 0 : 1;
-                    adjustGridSize(gridIndex);
-                    createRightGrid(gridIndex);
-                });
-            }
+            cell.addEventListener('mousedown', (event) => {
+                handleCellMouseDown(event, gridIndex, i, j);
+            });
             rightGrid.appendChild(cell);
         }
     }
+}
+
+function handleCellMouseDown(event, gridIndex, i, j) {
+    event.preventDefault();
+
+    let timerFired = false;
+    let lastMouseEvent = event;
+
+    // Start timer
+    const timerId = setTimeout(() => {
+        timerFired = true;
+        // Remove mouseup and mousemove listeners
+        document.removeEventListener('mouseup', onMouseUp);
+        document.removeEventListener('mousemove', onMouseMove);
+
+        // Begin drag operation
+        startDrag(lastMouseEvent, gridIndex);
+    }, 200); // 100 milliseconds
+
+    function onMouseUp(event) {
+        clearTimeout(timerId);
+        document.removeEventListener('mouseup', onMouseUp);
+        document.removeEventListener('mousemove', onMouseMove);
+
+        if (!timerFired) {
+            // Toggle cell state
+            const gridArray = rightGridArrays[gridIndex];
+            gridArray[i][j] = gridArray[i][j] ? 0 : 1;
+            adjustGridSize(gridIndex);
+            createRightGrid(gridIndex);
+        }
+    }
+
+    function onMouseMove(event) {
+        lastMouseEvent = event;
+    }
+
+    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('mousemove', onMouseMove);
 }
 
 function calculateRightGridSize() {
@@ -385,7 +414,7 @@ function startDrag(event, gridIndex) {
     document.addEventListener('mouseup', onMouseUp);
 }
 
-function tryPlacePiece(pieceArray, gridX, gridY) {
+function tryPlacePiece(pieceArray, gridX, gridY, skipHighlightClear, currentCombo) {
     const pieceRows = pieceArray.length;
     const pieceCols = pieceArray[0].length;
 
@@ -421,20 +450,48 @@ function tryPlacePiece(pieceArray, gridX, gridY) {
             }
         }
     }
-    lastPoints = cellsPlaced * combo;
+
+    // Use provided combo or global combo
+    let comboToUse = currentCombo !== undefined ? currentCombo : combo;
+
+    // Active cells placed are not multiplied by combo
+    lastPoints = cellsPlaced;
     totalScore += lastPoints;
 
     // Check for filled lines and update score and combo
-    checkAndClearFilledLines();
+    let totalLinesCleared = checkAndClearFilledLinesWithCombo(comboToUse);
 
-    // Update the display
-    updateScoreDisplay();
+    // Update combo
+    if (totalLinesCleared > 0) {
+        for (let n = 0; n < totalLinesCleared; n++) {
+            comboToUse += 1;
+        }
+    } else {
+        comboToUse = 1;
+    }
+
+    if (currentCombo === undefined) {
+        combo = comboToUse;
+    }
+
+    // Clear the highlightGridArray if not skipped
+    if (!skipHighlightClear) {
+        for (let i = 0; i < 8; i++) {
+            for (let j = 0; j < 8; j++) {
+                highlightGridArray[i][j] = null;
+            }
+        }
+    }
+
     createLeftGrid();
+    updateScoreDisplay();
 
-    return true;
+    return currentCombo !== undefined ? comboToUse : true;
 }
 
-function checkAndClearFilledLines() {
+
+
+function checkAndClearFilledLinesWithCombo(comboToUse) {
     let rowsCleared = [];
     let colsCleared = [];
 
@@ -464,18 +521,19 @@ function checkAndClearFilledLines() {
         }
     }
 
-    // Calculate points from cleared lines and update combo
+    // Calculate points from cleared lines and update score
     let totalLinesCleared = rowsCleared.length + colsCleared.length;
     if (totalLinesCleared > 0) {
         for (let n = 0; n < totalLinesCleared; n++) {
-            totalScore += 8 * combo;
-            lastPoints += 8 * combo;
-            combo += 1;
+            totalScore += 18 * (comboToUse-n);
+            lastPoints += 18 * (comboToUse-n);
+            comboToUse += 1;
         }
-    } else {
-        combo = 1; // Reset combo if no lines cleared
     }
+
+    return totalLinesCleared;
 }
+
 
 function updateScoreDisplay() {
     document.getElementById('total-score').textContent = 'Score: ' + totalScore;
@@ -489,17 +547,8 @@ document.addEventListener('DOMContentLoaded', () => {
         createRightGrid(k);
     }
 
-    const editButtons = document.getElementsByClassName('edit-button');
-    for (let i = 0; i < editButtons.length; i++) {
-        editButtons[i].addEventListener('click', function() {
-            if (this.textContent === 'Locked') {
-                this.textContent = 'Editing';
-            } else {
-                this.textContent = 'Locked';
-            }
-            createRightGrid(i); // Recreate grid to update event listeners
-        });
-    }
+    document.getElementById('calculate-best-move-button').addEventListener('click', calculateBestMove);
+    document.getElementById('play-suggestion-button').addEventListener('click', playSuggestedMoves);
 
     window.addEventListener('resize', () => {
         createLeftGrid();
@@ -508,3 +557,338 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+
+// Initialize the highlight grid
+let highlightGridArray = [];
+for (let i = 0; i < 8; i++) {
+    highlightGridArray[i] = [];
+    for (let j = 0; j < 8; j++) {
+        highlightGridArray[i][j] = null;
+    }
+}
+
+// Function to check if a shape can be placed on the grid
+function canPlaceShape(shape, gridX, gridY, grid) {
+    const gridSize = grid.length;
+    const shapeRows = shape.length;
+    const shapeCols = shape[0].length;
+
+    // Check boundaries
+    if (gridY < 0 || gridY + shapeRows > gridSize || gridX < 0 || gridX + shapeCols > gridSize) {
+        return false; // Shape goes out of grid
+    }
+
+    // Check for overlap
+    for (let y = 0; y < shapeRows; y++) {
+        for (let x = 0; x < shapeCols; x++) {
+            if (shape[y][x] === 1 && grid[gridY + y][gridX + x] === 1) {
+                return false; // Overlapping active cells
+            }
+        }
+    }
+
+    return true;
+}
+
+function recursivePlaceAndScore(shape, gridX, gridY, grid, currentCombo) {
+    const newGrid = grid.map(row => row.slice()); // Deep copy of the grid
+    const shapeRows = shape.length;
+    const shapeCols = shape[0].length;
+
+    let cellsPlaced = 0;
+
+    // Place the shape
+    for (let y = 0; y < shapeRows; y++) {
+        for (let x = 0; x < shapeCols; x++) {
+            if (shape[y][x] === 1) {
+                newGrid[gridY + y][gridX + x] = 1;
+                cellsPlaced += 1;
+            }
+        }
+    }
+
+    // Active cells placed are not multiplied by combo
+    let lastPoints = cellsPlaced;
+
+    // Now check for line clears
+    let clearedLines = [];
+    let newCombo = currentCombo;
+
+    // Check and collect filled rows
+    for (let i = 0; i < 8; i++) {
+        if (newGrid[i].every(cell => cell === 1)) {
+            clearedLines.push({ type: 'row', index: i });
+        }
+    }
+
+    // Check and collect filled columns
+    for (let j = 0; j < 8; j++) {
+        if (newGrid.every(row => row[j] === 1)) {
+            clearedLines.push({ type: 'col', index: j });
+        }
+    }
+
+    // Clear the lines
+    if (clearedLines.length > 0) {
+        for (let line of clearedLines) {
+            if (line.type === 'row') {
+                newGrid[line.index].fill(0);
+            } else if (line.type === 'col') {
+                for (let i = 0; i < 8; i++) {
+                    newGrid[i][line.index] = 0;
+                }
+            }
+            lastPoints += 18 * newCombo;
+            newCombo += 1;
+        }
+    } else {
+        newCombo = 1; // Reset combo
+    }
+
+    return {
+        newGrid,
+        lastPoints,
+        newCombo
+    };
+}
+
+
+// Function to get all legal placements for a shape
+function getAllLegalPlacements(shape, grid) {
+    if (!shape || shape.length === 0 || shape[0].length === 0) {
+        return [];
+    }
+    const gridSize = grid.length;
+    const shapeRows = shape.length;
+    const shapeCols = shape[0].length;
+
+    let positions = [];
+
+    for (let gridY = 0; gridY <= gridSize - shapeRows; gridY++) {
+        for (let gridX = 0; gridX <= gridSize - shapeCols; gridX++) {
+            if (canPlaceShape(shape, gridX, gridY, grid)) {
+                positions.push({ gridX, gridY });
+            }
+        }
+    }
+    return positions;
+}
+
+
+// Function to evaluate the board state
+function evaluateBoard(grid) {
+    let score = 0;
+    score += countFilledSquares(grid) * 1.5;
+    score += calculateChaos(grid) * 2.25;
+    return score;
+}
+
+// Count active cells in the main grid
+function countFilledSquares(grid) {
+    let count = 0;
+    for (let y = 0; y < grid.length; y++) {
+        for (let x = 0; x < grid[y].length; x++) {
+            if (grid[y][x] === 1) {
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+// Determine how organized the grid is
+function calculateChaos(grid) {
+    let q = 0;
+
+    // Horizontal segments
+    for (let y = 0; y < 8; y++) {
+        let segments = 0;
+        for (let x = 1; x < 8; x++) {
+            if (grid[y][x] !== grid[y][x - 1]) segments += 1;
+        }
+        q += segments;
+    }
+
+    // Vertical segments
+    for (let x = 0; x < 8; x++) {
+        let segments = 0;
+        for (let y = 1; y < 8; y++) {
+            if (grid[y][x] !== grid[y - 1][x]) segments += 1;
+        }
+        q += segments;
+    }
+
+    return q;
+}
+
+// Function to find the best sequence of moves
+function findBestSequence(pieces, grid, currentCombo) {
+    let bestResult = {
+        evaluationScore: Infinity,
+        moveSequence: [],
+        grid: null,
+        gameScore: 0
+    };
+
+    function search(currentGrid, remainingPieces, moveSequence, currentScore, combo) {
+        if (remainingPieces.length === 0) {
+            // Evaluate the board
+            const evaluationScore = evaluateBoard(currentGrid);
+            if (
+                evaluationScore < bestResult.evaluationScore ||
+                (evaluationScore === bestResult.evaluationScore && currentScore > bestResult.gameScore)
+            ) {
+                bestResult.evaluationScore = evaluationScore;
+                bestResult.moveSequence = moveSequence.slice();
+                bestResult.grid = currentGrid.map(row => row.slice()); // Deep copy
+                bestResult.gameScore = currentScore;
+            }
+            return;
+        }
+
+        for (let i = 0; i < remainingPieces.length; i++) {
+            const { pieceIndex, shape } = remainingPieces[i];
+            const placements = getAllLegalPlacements(shape, currentGrid);
+            if (placements.length === 0) continue; // Can't place this piece anywhere
+            for (let placement of placements) {
+                const {
+                    newGrid,
+                    lastPoints,
+                    newCombo
+                } = recursivePlaceAndScore(shape, placement.gridX, placement.gridY, currentGrid, combo);
+
+                let totalScore = currentScore + lastPoints;
+
+                const newMoveSequence = moveSequence.concat({
+                    pieceIndex,
+                    shape,
+                    gridX: placement.gridX,
+                    gridY: placement.gridY
+                });
+
+                const newRemainingPieces = remainingPieces.slice(0, i).concat(remainingPieces.slice(i + 1));
+
+                search(newGrid, newRemainingPieces, newMoveSequence, totalScore, newCombo);
+            }
+        }
+    }
+
+    search(grid, pieces, [], 0, currentCombo);
+
+    if (bestResult.moveSequence.length < pieces.length) {
+        return null;
+    }
+
+    return bestResult;
+}
+
+
+function calculateBestMove() {
+    // Get the trimmed versions of the pieces with their indices
+    let trimmedPieces = rightGridArrays.map((pieceArray, index) => ({ shape: trimPieceArray(pieceArray), pieceIndex: index }));
+
+    // Filter out empty shapes
+    trimmedPieces = trimmedPieces.filter(piece => piece.shape.length > 0 && piece.shape[0].length > 0);
+
+    // Copy the leftGridArray
+    let gridCopy = leftGridArray.map(row => row.slice());
+
+    // Get the current combo
+    let currentCombo = combo;
+
+    // Call findBestSequence
+    let bestResult = findBestSequence(trimmedPieces, gridCopy, currentCombo);
+
+    if (bestResult === null) {
+        alert('No valid moves found');
+        document.getElementById('play-suggestion-button').disabled = true;
+        suggestedMoveSequence = null;
+        return;
+    }
+
+    suggestedMoveSequence = bestResult.moveSequence;
+
+    // Enable the "Play Suggestion" button
+    document.getElementById('play-suggestion-button').disabled = false;
+
+    // Reset highlightGridArray
+    for (let i = 0; i < 8; i++) {
+        for (let j = 0; j < 8; j++) {
+            highlightGridArray[i][j] = null;
+        }
+    }
+
+    // For each move in the moveSequence, update highlightGridArray
+    let colors = ['rgba(255, 0, 0, 0.33)', 'rgba(0, 255, 0, 0.33)', 'rgba(0, 0, 255, 0.33)'];
+    bestResult.moveSequence.forEach((move, index) => {
+        let color = colors[index % colors.length];
+        let shape = move.shape;
+        let gridX = move.gridX;
+        let gridY = move.gridY;
+        let shapeRows = shape.length;
+        let shapeCols = shape[0].length;
+
+        for (let y = 0; y < shapeRows; y++) {
+            for (let x = 0; x < shapeCols; x++) {
+                if (shape[y][x] === 1) {
+                    highlightGridArray[gridY + y][gridX + x] = color;
+                }
+            }
+        }
+    });
+
+    // Redraw the left grid
+    createLeftGrid();
+}
+
+
+function playSuggestedMoves() {
+    if (!suggestedMoveSequence) {
+        return;
+    }
+
+    // Keep track of the combo
+    let currentCombo = combo;
+
+    suggestedMoveSequence.forEach((move) => {
+        let shape = move.shape;
+        let gridX = move.gridX;
+        let gridY = move.gridY;
+
+        // Place the piece on the left grid
+        let comboResult = tryPlacePiece(shape, gridX, gridY, true, currentCombo);
+
+        if (comboResult === false) {
+            // Should not happen, but handle error
+            console.error('Failed to place piece during playSuggestedMoves');
+            return;
+        } else {
+            currentCombo = comboResult;
+        }
+
+        // Remove the piece from the right grid
+        rightGridArrays[move.pieceIndex] = [[0]];
+        createRightGrid(move.pieceIndex);
+    });
+
+    // Update the global combo
+    combo = currentCombo;
+
+    // Clear the highlightGridArray
+    for (let i = 0; i < 8; i++) {
+        for (let j = 0; j < 8; j++) {
+            highlightGridArray[i][j] = null;
+        }
+    }
+
+    // Reset suggestedMoveSequence
+    suggestedMoveSequence = null;
+
+    // Disable the "Play Suggestion" button
+    document.getElementById('play-suggestion-button').disabled = true;
+
+    // Update the displays
+    createLeftGrid();
+    updateScoreDisplay();
+}
