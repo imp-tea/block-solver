@@ -37,20 +37,6 @@ body {
     margin-bottom: 0;
 }
 
-.edit-button {
-    margin-bottom: 10px;
-    padding: 5px 10px;
-    background-color: black;
-    color: white;
-    border: 1px solid white;
-    cursor: pointer;
-}
-
-.edit-button:hover {
-    background-color: white;
-    color: black;
-}
-
 #left-grid, .right-grid {
     background-color: black;
 }
@@ -59,10 +45,20 @@ body {
     border: 1px solid white;
     box-sizing: border-box;
     background-color: black;
+    position: relative;
 }
 
 .grid-cell.on {
     background-color: white;
+}
+
+.grid-cell::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
 }
 
 #left-container {
@@ -81,4 +77,25 @@ body {
 
 #score-container div {
     margin: 5px 0;
+}
+
+#calculate-best-move-button {
+    margin-top: 10px;
+    padding: 10px;
+    font-size: 16px;
+}
+
+#button-container {
+    display: flex;
+    margin-top: 10px;
+}
+
+#button-container button {
+    margin-right: 10px;
+    padding: 10px;
+    font-size: 16px;
+}
+
+#button-container button:last-child {
+    margin-right: 0;
 }
