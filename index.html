@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Static Grid Website</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+    <div id="main-container">
+        <div id="left-container">
+            <div id="score-container">
+                <div id="total-score">Score: 0</div>
+                <div id="combo">Combo: 1</div>
+                <div id="last-points">Last Move Points: 0</div>
+            </div>
+            <!-- Left grid -->
+            <div id="left-grid"></div>
+        </div>
+        <div id="right-container">
+            <!-- First grid -->
+            <div class="grid-container">
+                <button class="edit-button">Locked</button>
+                <div class="right-grid"></div>
+            </div>
+            <!-- Second grid -->
+            <div class="grid-container">
+                <button class="edit-button">Locked</button>
+                <div class="right-grid"></div>
+            </div>
+            <!-- Third grid -->
+            <div class="grid-container">
+                <button class="edit-button">Locked</button>
+                <div class="right-grid"></div>
+            </div>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
